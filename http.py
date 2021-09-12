@@ -19,6 +19,8 @@ import io
 import datetime
 import socket
 import threading
+import re
+import json
 
 
 class ContentLengthStream(io.TextIOBase):
@@ -52,6 +54,16 @@ class HttpMessage:
     def write_headers(self, f):
         for name, value in self.headers.items():
             f.write(f'{name}: {value}\r\n')
+
+    def json(self):
+        if self.headers.get('Content-Type') != 'application/json':
+            raise TypeError(f'Can\'t get json for Content-Type: \
+{self.headers.get("Content-Type")}')
+
+        if not self.body:
+            return None
+
+        return json.load(self.body)
 
 
 class HttpRequest(HttpMessage):
@@ -149,26 +161,131 @@ class HttpResponse(HttpMessage):
             f.write(self.body)
 
 
-def handle_client(f):
-    HttpRequest(f)
-    HttpResponse(200, {}, 'it works lol\n').write(f)
-    f.close()
+class Handler:
+    def __init__(self, method, pathre, function):
+        self.method = method
+        self.pathre = re.compile(f'^{pathre}$')
+        self.function = function
 
 
-def run(port=8080):
-    sock = socket.create_server(("", port))
-    while True:
-        try:
-            conn, _ = sock.accept()
-        except KeyboardInterrupt:
-            break
+class HttpServer:
+    def __init__(self):
+        self.handlers = []
 
-        thread = threading.Thread(
-            target=handle_client,
-            args=(conn.makefile('rw'),))
-        thread.start()
+    def run(self, port=8080):
+        sock = socket.create_server(("", port))
+        while True:
+            try:
+                conn, _ = sock.accept()
+            except KeyboardInterrupt:
+                break
+
+            thread = threading.Thread(
+                target=self.client_thread,
+                args=(conn.makefile('rw'),))
+            thread.start()
+
+    def client_thread(self, f):
+        with f:
+            req = HttpRequest(f)
+            for handler in self.handlers:
+                match = handler.pathre.match(req.raw_url)
+                if match:
+                    try:
+                        response = handler.function(req, *match.groups())
+                    except Exception as e:
+                        print(f"[500] {req.raw_url} -- {str(e)}")
+                        HttpResponse(
+                            500, {"Content-Type": "text/plain"}, str(e) + '\n'
+                        ).write(f)
+                        return
+
+                    self.sanitize_response(response).write(f)
+                    return
+            print(f"[404] {req.raw_url} -- Not Found")
+            HttpResponse(
+                404, {"Content-Type": "text/plain"}, 'Not Found\n').write(f)
+
+    def sanitize_response(self, response):
+        if isinstance(response, HttpResponse):
+            return response
+        elif isinstance(response, tuple):
+            code, headers, body = response
+        else:
+            code = 200
+            headers = {}
+            body = response
+
+        if isinstance(body, str):
+            headers.setdefault("Content-Type", "text/plain")
+        elif isinstance(body, dict) or isinstance(body, list):
+            headers.setdefault("Content-Type", "application/json")
+            body = json.dumps(body, indent=2) + '\n'
+
+        return HttpResponse(code, headers, body)
+
+    def route(self, method, path):
+        def decorator(func):
+            self.handlers.append(Handler(method, path, func))
+            return func
+        return decorator
+
+    def GET(self, path):
+        return self.route("GET", path)
+
+    def HEAD(self, path):
+        return self.route("GET", path)
+
+    def POST(self, path):
+        return self.route("POST", path)
+
+    def PUT(self, path):
+        return self.route("PUT", path)
+
+    def DELETE(self, path):
+        return self.route("DELETE", path)
+
+    def CONNECT(self, path):
+        return self.route("CONNECT", path)
+
+    def OPTIONS(self, path):
+        return self.route("OPTIONS", path)
+
+    def TRACE(self, path):
+        return self.route("TRACE", path)
+
+    def PATCH(self, path):
+        return self.route("PATCH", path)
 
 
 if __name__ == "__main__":
-    run()
-    print("shutting down")
+    server = HttpServer()
+
+    @server.GET("/hello/world")
+    def hello_world(request):
+        return "hello world\n"
+
+    @server.GET("/hello/(.*)")
+    def hello_any(request, name):
+        return f"hello {name}\n"
+
+    @server.GET("/json")
+    def get_json(request):
+        return {
+            "json": "data",
+            "some": "more"
+        }
+
+    @server.GET("/error")
+    def error(request):
+        raise Exception("oopsie")
+
+    @server.POST("/login")
+    def login(request):
+        data = request.json()
+        if data.get("password") == "jacobsucks":
+            return "access granted\n"
+        else:
+            return (403, {}, "access denied\n")
+
+    server.run()
