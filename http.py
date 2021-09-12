@@ -17,7 +17,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 import io
 import datetime
-import sys
+import socket
+import threading
 
 
 class ContentLengthStream(io.TextIOBase):
@@ -148,6 +149,26 @@ class HttpResponse(HttpMessage):
             f.write(self.body)
 
 
+def handle_client(f):
+    HttpRequest(f)
+    HttpResponse(200, {}, 'it works lol\n').write(f)
+    f.close()
+
+
+def run(port=8080):
+    sock = socket.create_server(("", port))
+    while True:
+        try:
+            conn, _ = sock.accept()
+        except KeyboardInterrupt:
+            break
+
+        thread = threading.Thread(
+            target=handle_client,
+            args=(conn.makefile('rw'),))
+        thread.start()
+
+
 if __name__ == "__main__":
-    req = HttpRequest(sys.stdin)
-    HttpResponse(200, {}, 'it works lol\n').write(sys.stdout)
+    run()
+    print("shutting down")
