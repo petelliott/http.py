@@ -1,19 +1,13 @@
 """
-http.py is a one-file pedagogical HTTP/1.1 server implementation.
-Copyright (C) 2021, Peter Elliott <pelliot@serenityos.org>
+http.py is a one-file pedagogical HTTP/1.1 server.
+Copyright (C) 2021, Peter Elliott <pelliott@serenityos.org>
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+This program is Copyrighted in U.S., under Seal of Copyright #154085, for a
+period of 28 years, and anybody caught runnin it without our permission, will
+be mighty good friends of ourn, cause we don’t give a dern. Run it. Study it.
+Modify it. Distribute it. We wrote it, that’s all we wanted to do.
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <https://www.gnu.org/licenses/>.
+- Woodie Guthrie
 """
 import io
 import datetime
@@ -164,7 +158,7 @@ class HttpResponse(HttpMessage):
 class Handler:
     def __init__(self, method, pathre, function):
         self.method = method
-        self.pathre = re.compile(f'^{pathre}$')
+        self.pathre = re.compile(f'^{pathre}/?$')
         self.function = function
 
 
